@@ -1,0 +1,5 @@
+*.wast
+*.wast.hpp
+*.wasm
+*.s
+*.abi
