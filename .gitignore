@@ -3,3 +3,7 @@
 *.wasm
 *.s
 *.abi
+passwd.txt
+nodeos.log
+cleos.sh
+.*
