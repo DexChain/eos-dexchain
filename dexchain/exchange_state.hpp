@@ -46,9 +46,30 @@ namespace dex {
       EOSLIB_SERIALIZE( dex_state, (supply)(base)(quote)(dex_account)(fee_rate) )
     };
 
+    struct fund_state {
+      asset base_balance;
+      asset fund_balance;
+
+      asset used_balance;
+
+      account_name fund_account;
+      uint8_t permission;
+
+      uint64_t primary_key()const { return fund_account; }
+
+      asset buy(asset quantity);
+      asset sell(asset quantity);
+      void  addfund(asset quantity);
+
+      EOSLIB_SERIALIZE( fund_state, (base_balance)(fund_balance)(used_balance)(fund_account)(permission) )
+    };
+
    typedef eosio::multi_index<N(dexmarkets), dex_state,
            indexed_by< N(base), const_mem_fun<dex_state, uint64_t,  &dex_state::by_base> >,
            indexed_by< N(quote), const_mem_fun<dex_state, uint64_t,  &dex_state::by_quote> >
    > dexmarkets;
+
+   typedef eosio::multi_index<N(fundmarkets), fund_state
+   > fundmarkets;
 
 } /// namespace dex

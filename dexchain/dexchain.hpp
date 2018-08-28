@@ -74,13 +74,28 @@ namespace dex {
          void buytoken(account_name owner, account_name receiver, account_name dex_account, asset quat);
          void selltoken(account_name owner, account_name receiver, account_name dex_account, asset quant);
          void closedex(account_name dex_account);
-     //TODO
+
+        //TODO
          void claim(account_name account);
          void refund(account_name dex_account);
          void resetDex(account_name dex_account, asset maxBase, asset maxQuote);
 
-      private:
+     // fund functions
+         void createfund(account_name creator, account_name fund_account, symbol_name base, symbol_name fund, uint8_t permission);
+         void buyfund(account_name payer, account_name receiver, account_name fund_account, asset quantity);
+         void sellfund(account_name account, account_name fund_account, asset quantity);
+         void addfund(account_name account, account_name fund_account, asset quantity);
+         void rentcpu(account_name account, account_name fund_account, asset quantity);
+         //使用基金的资金(XEOS/EOS)为账号抵押资源，该类型基金为保本型基金
+         void delegatebw(account_name fund_account, account_name receiver, asset net, asset cpu);
 
+        //TODO:
+         //使用基金的资金(XEOS/EOS)投票，该类型基金为保本型基金
+         void voteproducer( account_name fund_account, const account_name voter, const account_name proxy, const std::vector<account_name>& producers );
+         //提取基金的资金(XEOS/EOS)投资，该类型基金为高风险型基金
+         void withdrawfund( account_name fund_account, const account_name voter, const account_name proxy, const std::vector<account_name>& producers );
+
+      private:
          struct account {
             asset    balance;
 
@@ -99,10 +114,24 @@ namespace dex {
             uint64_t primary_key()const { return supply.symbol.name(); }
         };
 
+        struct fund_usage {
+            uint64_t       id;
+            account_name   fund_account;
+
+            asset          amount;
+            asset          amount2;
+            uint8_t        type;
+            time           create_time;
+            uint64_t primary_key()const { return id; }
+        };
+
          typedef eosio::multi_index<N(accounts), account> accounts;
          typedef eosio::multi_index<N(approves), account> approves;
+         typedef eosio::multi_index<N(fundusages), fund_usage> fundusages;
          typedef eosio::multi_index<N(stat), currency_stats> stats;
          dexmarkets _dexmarket;
+         fundmarkets _fundmarket;
+
 
          void sub_balance( account_name owner, asset value );
          void add_balance( account_name owner, asset value, account_name ram_payer );
@@ -111,6 +140,7 @@ namespace dex {
          void add_balance2( account_name owner, asset value, account_name ram_payer );
 
          void assertAsset( asset quantity );
+         void updateusage( account_name fund_account );
 
       public:
          struct transfer_args {

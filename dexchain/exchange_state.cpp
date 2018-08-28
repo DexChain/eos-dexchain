@@ -85,4 +85,38 @@ namespace dex {
 
       return from;
    }
+
+    asset fund_state::buy(asset quantity) {
+      asset out_asset( 0, base_balance.symbol);
+
+      const auto S0 = fund_balance.amount;
+      const auto S1 = S0 + quantity.amount;
+      const auto R0 = base_balance.amount;
+
+      const auto R1 = (uint128_t(S1) * R0) / S0;
+
+      fund_balance.amount = S1;
+      base_balance.amount = R0;
+      out_asset.amount = R1 - R0;
+      return out_asset;
+   }
+
+   asset fund_state::sell(asset quantity) {
+      asset out_asset( 0, fund_balance.symbol);
+
+      const auto S0 = fund_balance.amount;
+      const auto R0 = base_balance.amount;
+      const auto R1 = R0 - quantity.amount;
+      const auto S1 = (uint128_t(R1) * S0) / R0;
+
+      fund_balance.amount = S1;
+      base_balance.amount = R0;
+      out_asset.amount = R1 - R0;
+      return out_asset;
+   }
+
+   void fund_state::addfund(asset quantity) {
+      fund_balance.amount += quantity.amount;
+   }
+
 } /// namespace dex

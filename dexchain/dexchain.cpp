@@ -12,15 +12,26 @@ namespace dex {
 #define NONE_ACCOUNT    0
 #define APPROVE_ACCOUNT _self
 #define STAKE_ACCOUNT   _self
+#define DELEGATE_ACCOUNT _self
 
+#define SYSTEM_CONTRACT N(eosio)
 #define EOS_CONTRACT N(eosio.token)
 #define EOS_SYM S(4,EOS)
 #define DEXCHAIN_EOS_SYM S(4,XEOS)
 #define NONE_SYMBOL S(0,NONE)
 
+#define FUND_PERMISSION_DELEGATE 0x1
+#define FUND_PERMISSION_VOTE     0x2
+#define FUND_PERMISSION_WITHDRAW 0x4
+#define FUND_PERMISSION_FULL     0xff
+
+#define FUND_USAGE_TYPE_DELEGATEBW 1
+#define FUND_USAGE_TYPE_VOTE       2
+#define FUND_USAGE_TYPE_WITHDRAW   3
+
 using namespace eosio;
 
-dexchain::dexchain( account_name self ):contract(self), _dexmarket(self, self) {
+dexchain::dexchain( account_name self ):contract(self), _dexmarket(self, self), _fundmarket(self, self) {
     auto xeos = eosio::symbol_type(DEXCHAIN_EOS_SYM);
     stats statstable( _self, xeos.name() );
     auto existing = statstable.find( xeos.name());
@@ -564,6 +575,198 @@ void resetDex(account_name dex_account, asset maxBase, asset maxQuote)
     //TODO:Increase or descrease volume of dex with price keeping same
 }
 
+void dexchain::createfund(account_name creator, account_name fund_account, symbol_name base_symbol, symbol_name fund_symbol, uint8_t permission)
+    {
+        require_auth( creator );
+        asset base(0, base_symbol);
+        assertAsset(base);
+        asset fund(0, fund_symbol);
+        assertAsset(fund);
+
+        auto existing = _fundmarket.find( fund_account );
+
+        eosio_assert(existing == _fundmarket.end(), "fund market already existed");
+
+        _fundmarket.emplace( _self, [&]( auto& m ) {
+            m.fund_account = fund_account;
+            m.base_balance = base;
+            m.fund_balance = fund;
+            m.permission = permission;
+        });
+    }
+
+void dexchain::buyfund(account_name payer, account_name receiver, account_name fund_account, asset quantity)
+    {
+        require_auth( payer );
+
+        auto existing = _fundmarket.find( fund_account );
+        eosio_assert(existing != _fundmarket.end(), "fund market not existed");
+
+        const auto& fund = *existing;
+
+        eosio_assert( quantity.amount > 0, "must purchase a positive amount" );
+        eosio_assert( fund.fund_balance.symbol == quantity.symbol, "invalid symbol" );
+       //Send fund token to fund account
+        action(
+                permission_level{ payer, N(active) },//Must assign eosio.code of payer to this contract
+                _self, N(transfer),
+                std::make_tuple(payer, fund_account, quantity, std::string("Send fund token to dex account"))
+        ).send();
+
+        action(
+                permission_level{ fund_account, N(active) },
+                _self, N(approve),
+                std::make_tuple(fund_account, quantity, std::string("approve fund token"))
+        ).send();
+
+        asset tokens_out;
+        _fundmarket.modify( existing, 0, [&]( auto& es ) {
+            tokens_out = es.buy( quantity );
+        });
+        eosio_assert( tokens_out.amount > 0, "must reserve a positive amount" );
+        print("fund price,", quantity.amount, ":", tokens_out.amount);
+
+        //从基金转出
+        action(
+            permission_level{ fund_account, N(active) },
+            _self, N(issue),
+            std::make_tuple(fund_account, receiver, tokens_out, std::string("Issue base token"))
+        ).send();
+    }
+
+void dexchain::sellfund(account_name account, account_name fund_account, asset quantity)
+    {
+        require_auth( account );
+
+        auto existing = _fundmarket.find( fund_account );
+        eosio_assert(existing != _fundmarket.end(), "fund market not existed");
+
+        const auto& fund = *existing;
+
+        eosio_assert( quantity.amount > 0, "must sell a positive amount" );
+        eosio_assert( fund.fund_balance.symbol == quantity.symbol, "invalid symbol" );
+       //Send fund token to fund account
+        action(
+                permission_level{ account, N(active) },
+                _self, N(transfer),
+                std::make_tuple(account, fund_account, quantity, std::string("Send fund token to dex account"))
+        ).send();
+        sub_balance(account, quantity);
+
+        asset tokens_out;
+        _fundmarket.modify( existing, 0, [&]( auto& es ) {
+            tokens_out = es.sell( quantity );
+        });
+        eosio_assert( tokens_out.amount > 0, "must reserve a positive amount" );
+        print("fund price,", quantity.amount, ":", tokens_out.amount);
+
+        action(
+                permission_level{ fund_account, N(active) }, //Must assign eosio.code of creator to this contract
+                _self, N(disapprove),
+                std::make_tuple(fund_account, tokens_out, std::string("disapprove fund token"))
+        ).send();
+        //从基金转出
+        action(
+            permission_level{ fund_account, N(active) }, //Must assign eosio.code of creator to this contract
+            _self, N(transfer),
+            std::make_tuple(fund_account, account, tokens_out, std::string("refund token"))
+        ).send();
+    }
+
+void dexchain::addfund(account_name account, account_name fund_account, asset quantity)
+    {
+        require_auth( account );
+
+        auto existing = _fundmarket.find( fund_account );
+        eosio_assert(existing != _fundmarket.end(), "fund market not existed");
+
+        const auto& fund = *existing;
+
+        action(
+                permission_level{ account, N(active) },
+                _self, N(transfer),
+                std::make_tuple(account, fund_account, quantity, std::string("Send fund token to fund account"))
+        ).send();
+
+        action(
+                permission_level{ fund_account, N(active) }, //Must assign eosio.code of creator to this contract
+                _self, N(approve),
+                std::make_tuple(fund_account, quantity, std::string("approve fund token"))
+        ).send();
+
+        _fundmarket.modify( existing, 0, [&]( auto& es ) {
+            es.addfund( quantity );
+        });
+    }
+
+void dexchain::delegatebw(account_name fund_account, account_name receiver, asset net, asset cpu)
+    {
+        require_auth( fund_account );
+
+        auto existing = _fundmarket.find( fund_account );
+        eosio_assert(existing != _fundmarket.end(), "fund market not existed");
+
+        const auto& fund = *existing;
+        eosio_assert(fund.fund_balance.symbol == DEXCHAIN_EOS_SYM, "only xeos can be rent");
+                eosio_assert((fund.permission & FUND_PERMISSION_DELEGATE) == 1, "no delegate permission");
+
+        asset all_amount = net + cpu;
+
+        action(
+                permission_level{ fund_account, N(active) },
+                _self, N(disapprove),
+                std::make_tuple(fund_account, all_amount, std::string("disapprove fund token"))
+        ).send();
+
+        action(
+                permission_level{ fund_account, N(active) },
+                _self, N(transfer),
+                std::make_tuple(fund_account, DELEGATE_ACCOUNT, all_amount, std::string("transfer token to delegate account to delegate"))
+        ).send();
+
+
+        fundusages _fundusages( _self, fund_account );
+        auto id = _fundusages.available_primary_key();
+        _fundusages.emplace( _self, [&]( auto& m ) {
+            m.id = id;
+            m.amount = net;
+            m.amount2 = cpu;
+            m.fund_account = fund_account;
+            m.type = FUND_USAGE_TYPE_DELEGATEBW;
+            m.create_time = now();
+        });
+
+        //Delegatebw to receiver
+        action(
+                permission_level{ DELEGATE_ACCOUNT, N(active) },
+                SYSTEM_CONTRACT, N(delegatebw),
+                std::make_tuple(DELEGATE_ACCOUNT, receiver, net, cpu, false)
+        ).send();
+
+
+        //TODO:add delay action to undelegate cpu after one day
+
+
+        _fundmarket.modify( existing, 0, [&]( auto& es ) {
+            es.used_balance.amount += all_amount.amount;
+        });
+    }
+
+    void dexchain::updateusage( account_name fund_account ) {
+        ///TODO:遍历fund_usages table,找出到期的delegate
+    }
+
+    //TODO:
+    void dexchain::voteproducer( account_name fund_account, const account_name voter, const account_name proxy, const std::vector<account_name>& producers ) {
+
+    }
+
+    //TODO:
+    void dexchain::withdrawfund( account_name fund_account, const account_name voter, const account_name proxy, const std::vector<account_name>& producers ) {
+
+    }
+
 }/// namespace dex
 
-EOSIO_ABI( dex::dexchain, (create)(createbystake)(issue)(transfer)(approve)(disapprove)(stake)(unstake)(createdex)(closedex)(buytoken)(selltoken) )
+EOSIO_ABI( dex::dexchain, (create)(createbystake)(issue)(transfer)(approve)(disapprove)(stake)(unstake)(createdex)(closedex)(buytoken)(selltoken)(createfund)(buyfund)(sellfund)(addfund)
+ )

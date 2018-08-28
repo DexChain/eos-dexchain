@@ -46,7 +46,7 @@
 &nbsp;&nbsp;&nbsp;&nbsp;交易形成价格，投机交易也可能导致不合理价格，但是核心的还是代币的真正价值。具体到Eos-DexChain，场内币的价值由该代币所能绑定的实际价值决定。比如小超市的购物券币，就由该购物券所能使用的超市数量，用户量决定。抵押币通过代码1:1绑定后，抵押币的价值就完全和抵押的币的价值一致。比如XEOS(Eos-DexChain抵押币)就和EOS的价值一样。
 ### Eos-DexChain交易的各种安全保障
 * 抵押币的安全。<br>
-抵押币发行时会有对应量的场外币进入Eos-DexChain合约的抵押账号，因而抵押币是肯定可以提现的。比如1XEOS是肯定可以兑换成1EOS的。由于用作抵押的币的资金操作必须要赋值智能合约eosio.code权限，从而导致用户的场外币长时间可被智能合约操作。EOS-DexChain的抵押币设计了Stake,Unstake操作，只有执行这两个action时才需要eosio.code权限，其他抵押币交易阶段不需要eosio.code权限，大大降低了eosio.code权限的暴露时间。
+抵押币发行时会有对应量的场外币进入Eos-DexChain合约的抵押账号，因而抵押币是肯定可以提现的。比如1XEOS是肯定可以兑换成1EOS的。由于用作抵押的币的资金操作必须要赋值智能合约eosio.code权限，从而导致用户的场外币长时间可被智能合约操作。EOS-DexChain的抵押币设计了Stake,Unstake操作，只有执行这两个action时才需要eosio.code权限，其他抵押币交易阶段不需要eosio.code权限，大大降低了eosio.code权限的暴露时间。同时对于支持require_receipt的token,可以通过监听transfer事件直接stake而不需要eosio.code权限。
 * 交易所的安全<br>
 交易所管理账号的资金都是受合约监管的。EOS-DexChain新建了approve机制，交易所账号的所有资金都approve给了合约，这些资金只有智能合约能够管理。只有在交易所关闭时，才能提取这些资金，且关闭交易所会有延时，从而有足够时间让交易所的用户做出合理的响应，比如及时买卖。
 * 合约的安全<br>
